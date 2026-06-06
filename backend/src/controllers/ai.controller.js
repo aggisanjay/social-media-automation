@@ -30,6 +30,14 @@ export const generateContent = async (req, res, next) => {
       imageUrl = await generateImageFromPrompt(imagePrompt);
     }
 
+    const publishText = `
+${cleanTitle}
+
+${cleanContent}
+
+${cleanHashtagsList.join(" ")}
+`;
+
     const generation = await AIGeneration.create({
       userId,
       prompt,
@@ -38,14 +46,9 @@ export const generateContent = async (req, res, next) => {
       content: cleanContent,
       hashtags: cleanHashtagsList,
       imagePrompt,
+      text: publishText,
       imageUrl,
     });
-
-    const combinedText = [
-      generation.title,
-      generation.content,
-      generation.hashtags.join(" ")
-    ].filter(Boolean).join("\n\n");
 
     await ActivityLog.create({
       userId,
@@ -63,7 +66,7 @@ export const generateContent = async (req, res, next) => {
         content: generation.content,
         hashtags: generation.hashtags,
         imagePrompt: generation.imagePrompt,
-        text: combinedText,
+        text: generation.text,
         img: generation.imageUrl,
         date: generation.createdAt.toLocaleDateString(),
       },
@@ -80,11 +83,13 @@ export const getHistory = async (req, res, next) => {
 
     res.status(200).json({
       history: history.map((g) => {
-        const combinedText = [
-          g.title,
-          g.content,
-          g.hashtags && g.hashtags.length > 0 ? g.hashtags.join(" ") : ""
-        ].filter(Boolean).join("\n\n");
+        const textVal = g.text || `
+${g.title || ""}
+
+${g.content || ""}
+
+${(g.hashtags || []).join(" ")}
+`;
 
         return {
           id: g._id,
@@ -94,7 +99,7 @@ export const getHistory = async (req, res, next) => {
           content: g.content || "",
           hashtags: g.hashtags || [],
           imagePrompt: g.imagePrompt || "",
-          text: combinedText,
+          text: textVal,
           img: g.imageUrl,
           date: g.createdAt.toLocaleDateString(),
         };

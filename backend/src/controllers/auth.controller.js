@@ -3,6 +3,7 @@ import User from "../models/User.js";
 import ActivityLog from "../models/ActivityLog.js";
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from "../utils/token.js";
 import logger from "../utils/logger.js";
+import { createProfile } from "../services/zernio.service.js";
 
 // Helper to set refresh token cookie
 const setRefreshTokenCookie = (res, token) => {
@@ -30,10 +31,20 @@ export const register = async (req, res, next) => {
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
 
+    let zernioProfileId = null;
+    try {
+      logger.info(`Creating initial Zernio profile workspace for new user: ${name}`);
+      const profile = await createProfile(name, `${name} Social Workspace`);
+      zernioProfileId = profile._id || profile.id;
+    } catch (zernioError) {
+      logger.error(`Failed to create Zernio profile during registration: ${zernioError.message}`);
+    }
+
     const user = await User.create({
       name,
       email,
       passwordHash,
+      zernioProfileId
     });
 
     const accessToken = generateAccessToken(user);

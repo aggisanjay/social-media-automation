@@ -24,6 +24,7 @@ function AIComposer() {
   const [prompt, setPrompt] = useState("");
   const [aiImage, setAiImage] = useState(true);
   const [error, setError] = useState("");
+  const [selectedGeneration, setSelectedGeneration] = useState<any | null>(null);
 
   const { data: generations = [], isLoading: loadingHistory } = useQuery({
     queryKey: ["ai-generations"],
@@ -141,9 +142,18 @@ function AIComposer() {
                     <span className="text-xs text-muted-foreground">{g.date}</span>
                     <span className="text-[11px] font-medium px-2 py-0.5 rounded bg-accent text-primary">{g.tone}</span>
                   </div>
-                  <p className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap">{g.text}</p>
+                  <div className="cursor-pointer group/content" onClick={() => setSelectedGeneration(g)}>
+                    <p className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap">
+                      {g.text.length > 100 ? `${g.text.substring(0, 100)}...` : g.text}
+                    </p>
+                    {g.text.length > 100 && (
+                      <span className="text-xs font-semibold text-primary group-hover/content:underline mt-1 block">
+                        Read More
+                      </span>
+                    )}
+                  </div>
                   {g.img && (
-                    <img src={g.img} alt="" className="rounded-lg aspect-video object-cover" loading="lazy" />
+                    <img src={g.img} alt="" className="rounded-lg aspect-video cursor-pointer object-cover hover:opacity-95 transition" loading="lazy" onClick={() => setSelectedGeneration(g)} />
                   )}
                   <button
                     onClick={() => handleSchedulePost(g.text, g.img)}
@@ -157,6 +167,66 @@ function AIComposer() {
           )}
         </div>
       </div>
+
+      {/* Generation Details Modal */}
+      {selectedGeneration && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="bg-card border border-border rounded-xl shadow-xl max-w-lg w-full overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-slate-50/50">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">{selectedGeneration.date}</span>
+                <span className="text-[11px] font-medium px-2 py-0.5 rounded bg-accent text-primary">
+                  {selectedGeneration.tone}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedGeneration(null)}
+                className="text-slate-400 hover:text-slate-600 text-sm font-semibold transition cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-4 overflow-y-auto max-h-[70vh]">
+              {selectedGeneration.img && (
+                <div className="rounded-lg overflow-hidden border border-border">
+                  <img src={selectedGeneration.img} alt="Generated media" className="w-full aspect-video object-cover" />
+                </div>
+              )}
+
+              <div className="space-y-1">
+                <div className="text-[10px] font-semibold tracking-widest text-slate-400 uppercase">GENERATED CONTENT</div>
+                <p className="text-sm text-slate-800 leading-relaxed whitespace-pre-wrap bg-slate-50/50 p-4 rounded-lg border border-slate-100">
+                  {selectedGeneration.text}
+                </p>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-5 py-4 border-t border-border bg-slate-50/50 flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  handleSchedulePost(selectedGeneration.text, selectedGeneration.img);
+                  setSelectedGeneration(null);
+                }}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90 transition cursor-pointer"
+              >
+                Schedule Post
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedGeneration(null)}
+                className="inline-flex items-center justify-center rounded-lg border border-border bg-white px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

@@ -31,6 +31,10 @@ const aiGenerationSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    text: {
+      type: String,
+      default: "",
+    },
     imageUrl: {
       type: String,
       default: "",

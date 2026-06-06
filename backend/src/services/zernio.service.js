@@ -1,84 +1,157 @@
+import Zernio from '@zernio/node';
 import logger from "../utils/logger.js";
 
-export const publishToPlatform = async (platform, content, mediaUrl, credentials) => {
-  const apiKey = process.env.ZERNIO_API_KEY;
+let zernioInstance = null;
 
-  if (!apiKey) {
-    logger.info(`ZERNIO SIMULATOR: Publishing to ${platform}...`);
-    logger.info(`Content: "${content}"`);
-    if (mediaUrl) logger.info(`Media: ${mediaUrl}`);
-    
-    // Simulate delay
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    
-    logger.info(`ZERNIO SIMULATOR: Successfully published to ${platform}!`);
-    return {
-      success: true,
-      postId: `simulated_${platform}_${Date.now()}`,
-      url: `https://${platform}.com/simulated_post_url`,
-    };
-  }
-
-  try {
-    logger.info(`Zernio API: Publishing to ${platform}...`);
-    const response = await fetch("https://api.zernio.com/v1/publish", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        platform,
-        content,
-        mediaUrl,
-        credentials
-      })
+export const getZernioClient = () => {
+  if (!zernioInstance) {
+    const apiKey = process.env.ZERNIO_API_KEY;
+    zernioInstance = new Zernio({
+      apiKey: apiKey || 'dummy_key'
     });
+  }
+  return zernioInstance;
+};
 
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`Zernio API returned status ${response.status}: ${errText}`);
-    }
+export const zernio = new Proxy({}, {
+  get(target, prop) {
+    return getZernioClient()[prop];
+  }
+});
 
-    const data = await response.json();
-    logger.info(`Zernio API: Successfully published to ${platform}. Post ID: ${data.postId || data.id}`);
-    return data;
+export const createProfile = async (name, description) => {
+  try {
+    const profile = await getZernioClient().profiles.createProfile({
+      body: {
+        name,
+        description
+      }
+    });
+    return profile.data || profile;
   } catch (error) {
-    logger.error(`Zernio publishing failed: ${error.message}`);
-    throw new Error(`Social publishing failed: ${error.message}`);
+    logger.warn(`Zernio createProfile failed: ${error.message}. Attempting to list existing profiles...`);
+    try {
+      const res = await getZernioClient().profiles.listProfiles();
+      const data = res.data || res;
+      const profiles = data?.profiles || [];
+      if (profiles.length > 0) {
+        const defaultProfile = profiles.find((p) => p.isDefault) || profiles[0];
+        logger.info(`Fallback Zernio profile found: ${defaultProfile.name} (${defaultProfile._id || defaultProfile.id})`);
+        return defaultProfile;
+      }
+    } catch (listError) {
+      logger.error(`Zernio listProfiles fallback failed: ${listError.message}`);
+    }
+    throw error;
+  }
+};
+
+export const getConnectUrl = async (platform, profileId, redirectUrl) => {
+  try {
+    const res = await getZernioClient().connect.getConnectUrl({
+      path: {
+        platform
+      },
+      query: {
+        profileId,
+        redirect_url: redirectUrl
+      }
+    });
+    return res.data || res;
+  } catch (error) {
+    logger.error(`Zernio: getConnectUrl failed: ${error.message}`);
+    throw error;
+  }
+};
+
+export const listAccounts = async () => {
+  try {
+    const res = await getZernioClient().accounts.listAccounts();
+    const data = res.data || res;
+    const accounts = data?.accounts || (Array.isArray(data) ? data : []);
+    return { accounts };
+  } catch (error) {
+    logger.error(`Zernio: listAccounts failed: ${error.message}`);
+    throw error;
+  }
+};
+
+export const disconnectAccount = async (id) => {
+  try {
+    const res = await getZernioClient().accounts.deleteAccount({
+      path: {
+        accountId: id
+      }
+    });
+    return res.data || res;
+  } catch (error) {
+    logger.error(`Zernio: deleteAccount failed: ${error.message}`);
+    throw error;
   }
 };
 
 export const fetchConnectedProfiles = async () => {
-  const apiKey = process.env.ZERNIO_API_KEY;
-  if (!apiKey) {
-    logger.warn("ZERNIO_API_KEY is not defined. Skipping profile sync.");
-    return [];
-  }
-
   try {
-    const response = await fetch("https://zernio.com/api/v1/accounts", {
-      headers: {
-        "Authorization": `Bearer ${apiKey}`
-      }
-    });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`Zernio API returned status ${response.status}: ${errText}`);
-    }
-
-    const data = await response.json();
-    const accounts = data.accounts || [];
-    
-    return accounts.map((acc) => ({
-      accountId: acc.platformUserId || acc._id,
+    const { accounts } = await listAccounts();
+    return accounts.map(acc => ({
+      accountId: acc.id || acc._id,
       name: acc.displayName || acc.username || "Zernio Account",
       platform: (acc.platform || "").toLowerCase(),
-      avatarUrl: acc.profilePicture || "",
+      avatarUrl: acc.profilePicture || ""
     }));
   } catch (error) {
     logger.error(`Failed to fetch connected profiles from Zernio: ${error.message}`);
     return [];
+  }
+};
+
+export const publishToPlatform = async (platform, content, mediaUrl, credentials) => {
+  const accountId = credentials?.accountId;
+  const scheduledFor = credentials?.scheduledFor;
+
+  const payload = {
+    content,
+    platforms: [
+      {
+        platform,
+        accountId
+      }
+    ]
+  };
+
+  if (scheduledFor) {
+    payload.scheduledFor = scheduledFor;
+  } else {
+    payload.publishNow = true;
+  }
+
+  if (mediaUrl) {
+    const isVideo = mediaUrl.match(/\.(mp4|mov|avi|mkv|webm)(?:\?.*)?$/i);
+    payload.mediaItems = [
+      {
+        type: isVideo ? "video" : "image",
+        url: mediaUrl
+      }
+    ];
+  }
+
+  const url = "https://zernio.com/api/v1/posts";
+  
+  try {
+    const res = await getZernioClient().posts.createPost({
+      body: payload
+    });
+    const responseData = res.data || res;
+    const response = { data: responseData };
+
+    console.log("Zernio URL:", url);
+    console.log("Payload:", payload);
+    console.log("Response:", response.data);
+
+    logger.info(`Zernio API: Successfully published to ${platform}. Post ID: ${responseData.post?._id || responseData.postId || responseData.id}`);
+    return responseData;
+  } catch (error) {
+    logger.error(`Zernio publishing failed: ${error.message}`);
+    throw new Error(`Social publishing failed: ${error.message}`);
   }
 };

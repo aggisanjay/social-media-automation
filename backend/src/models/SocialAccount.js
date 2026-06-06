@@ -50,6 +50,9 @@ socialAccountSchema.index({ userId: 1, platform: 1, accountId: 1 }, { unique: tr
 
 // Soft delete query helper
 socialAccountSchema.pre(/^find/, function (next) {
+  if (this.getOptions().withDeleted) {
+    return next();
+  }
   this.where({ deletedAt: null });
   next();
 });

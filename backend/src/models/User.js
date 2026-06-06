@@ -32,6 +32,10 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    zernioProfileId: {
+      type: String,
+      default: null,
+    },
   },
   {
     timestamps: true,
@@ -40,6 +44,9 @@ const userSchema = new mongoose.Schema(
 
 // Soft delete query helpers
 userSchema.pre(/^find/, function (next) {
+  if (this.getOptions().withDeleted) {
+    return next();
+  }
   this.where({ deletedAt: null });
   next();
 });

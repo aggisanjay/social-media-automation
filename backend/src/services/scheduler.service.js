@@ -5,6 +5,7 @@ import Post from "../models/Post.js";
 import { publishToPlatform } from "./zernio.service.js";
 import SocialAccount from "../models/SocialAccount.js";
 import ActivityLog from "../models/ActivityLog.js";
+import User from "../models/User.js";
 
 let postQueue = null;
 let redisConnection = null;
@@ -111,8 +112,17 @@ export const executePublishPostJob = async (postId) => {
   logger.info(`Publishing post ${post._id} to platforms: ${post.platforms.join(", ")}`);
   
   try {
-    // 1. Fetch connected social accounts for the user
-    const accounts = await SocialAccount.find({ userId: post.userId, status: "connected" });
+    // Validate that user exists and has a Zernio workspace profile
+    const user = await User.findById(post.userId);
+    if (!user) {
+      throw new Error("Validation failed: User not found");
+    }
+    if (!user.zernioProfileId) {
+      throw new Error("Validation failed: Zernio workspace profile is missing");
+    }
+
+    // 1. Fetch all connected/disconnected social accounts for the user to validate status
+    const accounts = await SocialAccount.find({ userId: post.userId });
     
     // Map platform keys to their social accounts
     const platformToAccount = {};
@@ -129,16 +139,56 @@ export const executePublishPostJob = async (postId) => {
 
     // 2. Publish to each platform
     const errors = [];
+    
+    // Safely parse content if it contains JSON string representing post parts
+    let publishContent = post.content || "";
+    if (typeof publishContent === "string" && (publishContent.trim().startsWith("{") || publishContent.trim().startsWith("["))) {
+      try {
+        const parsed = JSON.parse(publishContent.trim());
+        if (parsed && typeof parsed === "object") {
+          const title = parsed.title || "";
+          const bodyContent = parsed.content || parsed.body || parsed.text || "";
+          const hashtags = Array.isArray(parsed.hashtags) ? parsed.hashtags : (parsed.hashtags ? [parsed.hashtags] : []);
+          
+          if (title || bodyContent || hashtags.length > 0) {
+            publishContent = `
+${title}
+
+${bodyContent}
+
+${hashtags.join(" ")}
+`.trim();
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+
     for (const pfKey of post.platforms) {
       const account = platformToAccount[pfKey];
-      if (!account) {
-        errors.push(`No connected account for platform: ${pfKey}`);
+      if (!account || account.status === "disconnected") {
+        errors.push(`${pfKey}: Social account is not connected.`);
+        continue;
+      }
+
+      if (!account.accountId) {
+        errors.push(`${account.platform}: Zernio account ID is missing.`);
+        continue;
+      }
+
+      if (account.status === "expired") {
+        errors.push(`${account.platform}: Social connection is expired.`);
         continue;
       }
 
       try {
-        await publishToPlatform(account.platform, post.content, post.mediaUrl, {
+        // Log content type and content preview (first 200 chars) before publishing
+        logger.info(`Before publishing: content type = ${typeof publishContent}, preview = "${publishContent.substring(0, 200)}"`);
+        
+        await publishToPlatform(account.platform, publishContent, post.mediaUrl, {
           accessToken: account.accessToken,
+          accountId: account.accountId,
         });
       } catch (err) {
         errors.push(`${account.platform}: ${err.message}`);

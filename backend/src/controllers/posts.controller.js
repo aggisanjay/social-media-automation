@@ -2,6 +2,7 @@ import Post from "../models/Post.js";
 import ActivityLog from "../models/ActivityLog.js";
 import { schedulePost, cancelScheduledPost, executePublishPostJob } from "../services/scheduler.service.js";
 import { uploadMedia } from "../services/cloudinary.service.js";
+import logger from "../utils/logger.js";
 
 export const createPost = async (req, res, next) => {
   try {
@@ -9,16 +10,40 @@ export const createPost = async (req, res, next) => {
     const { platforms, content, scheduledAt, mediaUrl: bodyMediaUrl } = req.body;
     let mediaUrl = bodyMediaUrl || "";
 
-    if (!platforms || !content) {
+    if (platforms === undefined || platforms === null || content === undefined || content === null) {
       return res.status(400).json({ message: "Platforms and content are required" });
     }
 
-    const platformList = typeof platforms === "string" ? JSON.parse(platforms) : platforms;
+    if (typeof content !== "string") {
+      return res.status(400).json({ message: "Content must be a string" });
+    }
+
+    let platformList;
+    try {
+      platformList = typeof platforms === "string" ? JSON.parse(platforms) : platforms;
+    } catch (e) {
+      return res.status(400).json({ message: "Platforms must be a valid JSON array or list" });
+    }
+
+    if (!Array.isArray(platformList)) {
+      return res.status(400).json({ message: "Platforms must be an array" });
+    }
+
+    if (platformList.length === 0) {
+      return res.status(400).json({ message: "At least one platform must be selected" });
+    }
+
+    if (bodyMediaUrl !== undefined && bodyMediaUrl !== null && typeof bodyMediaUrl !== "string") {
+      return res.status(400).json({ message: "Media URL must be a string" });
+    }
 
     if (req.file) {
       const uploadResult = await uploadMedia(req.file.path);
       mediaUrl = uploadResult.url;
     }
+
+    // Add debug log before database save: content type and content length
+    logger.info(`Before database save: content type = ${typeof content}, content length = ${content.length}`);
 
     const postStatus = scheduledAt ? "scheduled" : "draft";
 
@@ -88,8 +113,31 @@ export const updatePost = async (req, res, next) => {
       post.mediaUrl = uploadResult.url;
     }
 
-    if (platforms) post.platforms = typeof platforms === "string" ? JSON.parse(platforms) : platforms;
-    if (content) post.content = content;
+    if (content !== undefined && content !== null) {
+      if (typeof content !== "string") {
+        return res.status(400).json({ message: "Content must be a string" });
+      }
+      post.content = content;
+    }
+
+    if (platforms !== undefined && platforms !== null) {
+      let platformList;
+      try {
+        platformList = typeof platforms === "string" ? JSON.parse(platforms) : platforms;
+      } catch (e) {
+        return res.status(400).json({ message: "Platforms must be a valid JSON array or list" });
+      }
+      if (!Array.isArray(platformList)) {
+        return res.status(400).json({ message: "Platforms must be an array" });
+      }
+      if (platformList.length === 0) {
+        return res.status(400).json({ message: "At least one platform must be selected" });
+      }
+      post.platforms = platformList;
+    }
+
+    // Add debug log before database save: content type and content length
+    logger.info(`Before database save (update): content type = ${typeof post.content}, content length = ${post.content ? post.content.length : 0}`);
 
     const scheduleDateChanged = scheduledAt && new Date(scheduledAt).getTime() !== new Date(post.scheduledAt).getTime();
     if (scheduledAt) {

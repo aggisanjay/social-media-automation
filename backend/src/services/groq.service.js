@@ -89,31 +89,63 @@ The imageKeywords should be a comma-separated list of 2-3 broad, standard search
     });
 
     const result = JSON.parse(response.choices[0]?.message?.content || "{}");
-    
-    let title = "";
-    if (result.title) {
-      title = typeof result.title === "string" ? result.title.trim() : JSON.stringify(result.title);
-    }
 
-    let content = "";
-    if (result.content) {
-      content = typeof result.content === "string" ? result.content.trim() : JSON.stringify(result.content, null, 2);
-    }
+    const extractText = (val) => {
+      if (!val) return "";
+      if (typeof val === "string") {
+        const trimmed = val.trim();
+        if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+          try {
+            return extractText(JSON.parse(trimmed));
+          } catch (e) {
+            // ignore
+          }
+        }
+        return trimmed;
+      }
+      if (Array.isArray(val)) {
+        return val.map(extractText).filter(Boolean).join("\n");
+      }
+      if (typeof val === "object") {
+        // Localization check: check for English
+        if (val.en || val.english) {
+          return extractText(val.en || val.english);
+        }
+        const commonKeys = ["text", "content", "body", "message", "caption", "post", "description"];
+        for (const key of commonKeys) {
+          if (val[key]) {
+            return extractText(val[key]);
+          }
+        }
+        const stringValues = Object.values(val).map(extractText).filter(Boolean);
+        if (stringValues.length > 0) {
+          return stringValues.join("\n");
+        }
+      }
+      return String(val);
+    };
+
+    const stripHtml = (str) => {
+      if (typeof str !== "string") return "";
+      if (str.includes("<") && str.includes(">")) {
+        return str.replace(/<\/?[^>]+(>|$)/g, "").trim();
+      }
+      return str;
+    };
+    
+    let title = stripHtml(extractText(result.title));
+    let content = stripHtml(extractText(result.content));
     
     let hashtags = [];
     if (Array.isArray(result.hashtags)) {
-      hashtags = result.hashtags.map(h => typeof h === "string" ? h.trim() : JSON.stringify(h));
+      hashtags = result.hashtags.map(h => extractText(h)).filter(Boolean);
+    } else if (result.hashtags) {
+      const rawHashtags = extractText(result.hashtags);
+      hashtags = rawHashtags.split(/[\s,]+/).filter(Boolean);
     }
     
-    let imagePrompt = "";
-    if (result.imagePrompt) {
-      imagePrompt = typeof result.imagePrompt === "string" ? result.imagePrompt.trim() : JSON.stringify(result.imagePrompt);
-    }
-
-    let imageKeywords = "";
-    if (result.imageKeywords) {
-      imageKeywords = typeof result.imageKeywords === "string" ? result.imageKeywords.trim() : JSON.stringify(result.imageKeywords);
-    }
+    let imagePrompt = extractText(result.imagePrompt);
+    let imageKeywords = extractText(result.imageKeywords);
 
     return { title, content, hashtags, imagePrompt, imageKeywords };
   } catch (error) {

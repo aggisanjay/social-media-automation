@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import logger from "../utils/logger.js";
 
 const postSchema = new mongoose.Schema(
   {
@@ -52,8 +53,19 @@ postSchema.index({ userId: 1 });
 postSchema.index({ status: 1 });
 postSchema.index({ scheduledAt: 1 });
 
+// Pre-save hook to log content type and length before database save
+postSchema.pre("save", function (next) {
+  if (this.isModified("content")) {
+    logger.info(`Before DB Save: content type = ${typeof this.content}, content length = ${this.content ? this.content.length : 0}`);
+  }
+  next();
+});
+
 // Soft delete query helper
 postSchema.pre(/^find/, function (next) {
+  if (this.getOptions().withDeleted) {
+     return next();
+  }
   this.where({ deletedAt: null });
   next();
 });

@@ -13,7 +13,8 @@ export const getAccounts = async (req, res, next) => {
         { platform: null },
         { accountId: { $exists: false } },
         { accountId: null },
-        { platform: { $nin: ["linkedin", "twitter", "facebook", "instagram", "threads"] } }
+        { platform: { $nin: ["linkedin", "twitter", "facebook", "instagram", "threads"] } },
+        { accountId: { $not: /^(acc_[a-zA-Z0-9]+|[0-9a-fA-F]{24})$/ } }
       ]
     });
 
@@ -33,7 +34,7 @@ export const getAccounts = async (req, res, next) => {
           status: "connected",
           deletedAt: null,
         },
-        { upsert: true, new: true }
+        { upsert: true, new: true, withDeleted: true }
       );
     }
 
@@ -64,7 +65,7 @@ export const connectAccount = async (req, res, next) => {
         status: "connected",
         deletedAt: null, // Clear soft delete if reconnected
       },
-      { new: true, upsert: true, runValidators: true }
+      { new: true, upsert: true, runValidators: true, withDeleted: true }
     );
 
     await ActivityLog.create({

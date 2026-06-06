@@ -80,6 +80,13 @@ describe("API Endpoints", () => {
 
   describe("POST /api/ai/generate", () => {
     it("should generate post text content successfully", async () => {
+      const expectedText = `
+Mock Title
+
+Mock generated social post
+
+#Mock #Social
+`;
       jest.spyOn(AIGeneration, "create").mockResolvedValue({
         _id: "6650b299e5256e2978d38b6d",
         prompt: "Write a startup post",
@@ -88,6 +95,7 @@ describe("API Endpoints", () => {
         content: "Mock generated social post",
         hashtags: ["#Mock", "#Social"],
         imagePrompt: "Mock image prompt",
+        text: expectedText,
         imageUrl: "",
         createdAt: new Date(),
       });
@@ -103,7 +111,7 @@ describe("API Endpoints", () => {
         });
 
       expect(res.statusCode).toEqual(200);
-      expect(res.body.generation.text).toEqual("Mock Title\n\nMock generated social post\n\n#Mock #Social");
+      expect(res.body.generation.text).toEqual(expectedText);
     });
   });
 

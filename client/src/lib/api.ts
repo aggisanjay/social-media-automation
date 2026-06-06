@@ -103,20 +103,20 @@ export const dashboardService = {
 // Social Accounts Services
 export const accountsService = {
   async getAccounts() {
-    const { data } = await api.get("/accounts");
+    const { data } = await api.get("/social/accounts");
     return data.accounts;
   },
-  async connectAccount(platform, name, accountId) {
-    const { data } = await api.post("/accounts/connect", { platform, name, accountId });
-    return data.account;
-  },
-  async disconnectAccount(id) {
-    const { data } = await api.delete(`/accounts/${id}`);
+  async getConnectUrl(platform) {
+    const { data } = await api.post(`/social/connect/${platform}`);
     return data;
   },
-  async syncAccount(id) {
-    const { data } = await api.post(`/accounts/${id}/sync`);
-    return data.account;
+  async disconnectAccount(id) {
+    const { data } = await api.delete(`/social/accounts/${id}`);
+    return data;
+  },
+  async syncAccounts() {
+    const { data } = await api.post("/social/sync");
+    return data.accounts;
   },
 };
 

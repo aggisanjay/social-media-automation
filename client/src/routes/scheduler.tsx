@@ -39,7 +39,7 @@ const platformIcons: Record<string, any> = {
 function Scheduler() {
   const queryClient = useQueryClient();
   const search = Route.useSearch();
-  
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const hasInitializedSelection = useRef(false);
   const [selected, setSelected] = useState<string[]>(["x"]);
@@ -108,7 +108,7 @@ function Scheduler() {
       queryClient.invalidateQueries({ queryKey: ["posts-published"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-activity"] });
-      
+
       // Reset form
       setContent("");
       setDate("");
@@ -175,6 +175,21 @@ function Scheduler() {
       return;
     }
 
+    // Strict client-side validation checks
+    if (typeof content !== "string") {
+      setFormError("Validation error: Content must be a string.");
+      return;
+    }
+    if (!Array.isArray(selected)) {
+      setFormError("Validation error: Platforms must be an array.");
+      return;
+    }
+    const checkMediaUrl = mediaFile ? "" : (mediaPreview || "");
+    if (typeof checkMediaUrl !== "string") {
+      setFormError("Validation error: Media URL must be a string.");
+      return;
+    }
+
     setFormError("");
     const formData = new FormData();
     formData.append("platforms", JSON.stringify(selected));
@@ -220,11 +235,10 @@ function Scheduler() {
                     key={key}
                     type="button"
                     onClick={() => toggle(key)}
-                    className={`grid h-10 w-10 place-items-center rounded-lg border transition relative cursor-pointer ${
-                      active
+                    className={`grid h-10 w-10 place-items-center rounded-lg border transition relative cursor-pointer ${active
                         ? "border-primary bg-accent text-primary"
                         : "border-border text-foreground/70 hover:bg-secondary"
-                    }`}
+                      }`}
                     title={`${label} ${connected ? "(Connected)" : "(Not connected)"}`}
                   >
                     <Icon className="h-4 w-4" />
